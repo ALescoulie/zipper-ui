@@ -15,19 +15,27 @@ main :: IO ()
 main = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
-  loop
+  loop (m :@ [InPlusL (Lit 4)])
   putStrLn ""
 
-loop :: IO ()
-loop = do
+  where
+    m = Plus (Plus (Lit 0) (Lit 1)) (Plus (Lit 2) (Lit 3))
+
+type LoopState = TermZipper
+
+loop :: LoopState -> IO ()
+loop s = do
+  writeLine (prettyZipper s)
   key <- getKey
-  case key of
-    "w" -> writeLine "w"
-    "a" -> writeLine "a"
-    "s" -> writeLine "s"
-    "d" -> writeLine "d"
-    _        -> return ()
-  loop
+  let s' =
+        case key of
+          "w" -> navUp s
+          "a" -> navLeft s
+          "s" -> navDown s
+          "d" -> navRight s
+          _ -> s
+  loop s'
+
 
 getKey :: IO [Char]
 getKey = reverse <$> getKey' ""
@@ -36,3 +44,54 @@ getKey = reverse <$> getKey' ""
       char <- getChar
       more <- hReady stdin
       (if more then getKey' else return) (char:chars)
+
+data Term
+  = Lit Int
+  | Plus Term Term
+
+prettyTerm :: Term -> String
+prettyTerm (Lit i) = show i
+prettyTerm (Plus m n) =
+  "( " ++ prettyTerm m ++ " + " ++ prettyTerm n ++ " )"
+
+data TermFrame
+  = InPlusL Term
+  | InPlusR Term
+
+prettyFrame :: TermFrame -> String -> String
+prettyFrame (InPlusL n) m =
+  "( " ++ m ++ " + " ++ prettyTerm n ++ " )"
+prettyFrame (InPlusR m) n =
+  "( " ++ prettyTerm m ++ " + " ++ n ++ " )"
+
+
+-- term at a context
+data TermZipper
+  = Term :@ [TermFrame]
+
+prettyZipper :: TermZipper -> String
+prettyZipper (m :@ k) = go k ("▷" ++ prettyTerm m ++ "◁")
+  where
+    go [] m = m
+    go (f:fs) m = go fs (prettyFrame f m) 
+
+start :: Term -> TermZipper
+start m = m :@ []
+
+navUp :: TermZipper -> TermZipper
+navUp (m :@ (InPlusL n:k)) = Plus m n :@ k
+navUp (n :@ (InPlusR m:k)) = Plus m n :@ k
+navUp s = s
+
+navLeft :: TermZipper -> TermZipper
+navLeft (n :@ (InPlusR m:k)) = m :@ (InPlusL n:k)
+navLeft s = s
+
+navDown :: TermZipper -> TermZipper
+navDown (Plus m n :@ k) = m :@ (InPlusL n : k)
+navDown s = s
+
+navRight :: TermZipper -> TermZipper
+navRight (m :@ (InPlusL n:k)) = n :@ (InPlusR m:k)
+navRight s = s
+
