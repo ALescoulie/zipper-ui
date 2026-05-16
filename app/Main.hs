@@ -15,26 +15,31 @@ main :: IO ()
 main = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
-  loop (m :@ [InPlusL (Lit 4)])
+  loop (start m, [])
   putStrLn ""
 
   where
     m = Plus (Plus (Lit 0) (Lit 1)) (Plus (Lit 2) (Lit 3))
 
-type LoopState = TermZipper
+type LoopState = (TermZipper, [TermZipper])
 
 loop :: LoopState -> IO ()
-loop s = do
+loop (s, h) = do
   writeLine (prettyZipper s)
   key <- getKey
-  let s' =
+  let sh' =
         case key of
-          "w" -> navUp s
-          "a" -> navLeft s
-          "s" -> navDown s
-          "d" -> navRight s
-          _ -> s
-  loop s'
+          "w" -> (navUp s, h)
+          "a" -> (navLeft s, h)
+          "s" -> (navDown s, h)
+          "d" -> (navRight s, h)
+          [c] | c `elem` "1234567890" ->
+            (overwrite (read [c]) s, s:h)
+          "+" -> (insertPlus s, s:h)
+          "u" -> case h of
+                  [] -> (s, h)
+                  s':h' -> (s', h')
+  loop sh'
 
 
 getKey :: IO [Char]
@@ -94,4 +99,10 @@ navDown s = s
 navRight :: TermZipper -> TermZipper
 navRight (m :@ (InPlusL n:k)) = n :@ (InPlusR m:k)
 navRight s = s
+
+overwrite :: Int -> TermZipper -> TermZipper
+overwrite i (_ :@ k) = Lit i :@ k
+
+insertPlus :: TermZipper -> TermZipper
+insertPlus (m :@ k) = Lit (-1) :@ (InPlusR m:k)
 
